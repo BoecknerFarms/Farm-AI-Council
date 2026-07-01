@@ -1,0 +1,15 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+
+data/logs/
+data/vectorstore/
+
+# Keep private farm records local unless intentionally committed
+knowledge/private/
+knowledge/farm_records_private/
+
+# Optional: keep generated reports/conversations local
+# conversations/
+# reports/
