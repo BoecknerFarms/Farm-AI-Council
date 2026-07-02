@@ -11,6 +11,9 @@ from app.master_data_service import (
     get_crop_year,
 )
 
+from app.database import SessionLocal
+from app.models import FieldOperation
+
 from pathlib import Path
 from html import escape
 
@@ -161,6 +164,7 @@ def page_shell(title: str, body: str) -> str:
                 <div class="nav">
                     <a class="button secondary" href="/">Ask</a>
                     <a class="button secondary" href="/record">Record</a>
+                    <a class="button secondary" href="/records">Records</a>
                     <a class="button secondary" href="/setup">Setup</a>
                     <a class="button secondary" href="/history">History</a>
                 </div>
@@ -607,3 +611,68 @@ def record_save(draft_json: str = Form(...)):
     </section>
     """
     return page_shell("Field Record Saved", body)
+
+@app.get("/records", response_class=HTMLResponse)
+def records_page():
+    db = SessionLocal()
+    try:
+        operations = (
+            db.query(FieldOperation)
+            .order_by(FieldOperation.id.desc())
+            .limit(50)
+            .all()
+        )
+
+        rows = ""
+
+        for op in operations:
+            field_name = op.field.field_name if op.field else "Unknown field"
+            crop = op.crop_year.crop if op.crop_year else "Unknown crop"
+
+            products = ""
+            for item in op.inputs:
+                rate = item.rate if item.rate is not None else ""
+                rate_unit = item.rate_unit or ""
+                products += f"<li>{escape(item.product_name)} — {rate} {escape(rate_unit)}</li>"
+
+            if not products:
+                products = "<li>No products recorded</li>"
+
+            rows += f"""
+            <div class="history-item">
+                <strong>#{op.id} — {escape(op.operation_type)} — {escape(field_name)}</strong>
+                <div class="file">
+                    Date: {op.operation_date or "Unknown"} |
+                    Crop: {escape(crop)} |
+                    Acres: {op.acres_covered if op.acres_covered is not None else "Unknown"}
+                </div>
+                <p><strong>Operator:</strong> {escape(op.operator or "Unknown")}</p>
+                <p><strong>Equipment:</strong> {escape(op.equipment or "Unknown")}</p>
+                <p><strong>Conditions:</strong> {escape(op.field_conditions or "Unknown")}</p>
+                <p><strong>Weather:</strong> {escape(op.weather_notes or "Unknown")}</p>
+                <p><strong>Notes:</strong> {escape(op.notes or "")}</p>
+                <p><strong>Products:</strong></p>
+                <ul>{products}</ul>
+                <details>
+                    <summary>Original text</summary>
+                    <pre>{escape(op.source_text or "")}</pre>
+                </details>
+            </div>
+            """
+
+        if not rows:
+            rows = '<p class="empty">No field records saved yet.</p>'
+
+        body = f"""
+        <section class="card">
+            <h2>Saved Field Records</h2>
+            <div class="history-list">
+                {rows}
+            </div>
+        </section>
+        """
+
+        return page_shell("Saved Field Records", body)
+
+    finally:
+        db.close()
