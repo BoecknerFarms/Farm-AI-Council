@@ -11,5 +11,5 @@ knowledge/private/
 knowledge/farm_records_private/
 
 # Optional: keep generated reports/conversations local
-# conversations/
-# reports/
+conversations/
+reports/
