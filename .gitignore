@@ -3,8 +3,7 @@ __pycache__/
 *.pyc
 .venv/
 
-data/logs/
-data/vectorstore/
+data/
 
 # Keep private farm records local unless intentionally committed
 knowledge/private/
