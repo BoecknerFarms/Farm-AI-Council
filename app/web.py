@@ -1,3 +1,16 @@
+import json
+from datetime import date
+
+from app.record_parser import parse_field_record
+from app.field_record_service import save_approved_field_record
+from app.master_data_service import (
+    list_fields,
+    create_field,
+    list_crop_years,
+    create_crop_year,
+    get_crop_year,
+)
+
 from pathlib import Path
 from html import escape
 
@@ -91,7 +104,7 @@ def page_shell(title: str, body: str) -> str:
                 box-shadow: 0 8px 24px rgba(31, 41, 51, 0.06);
             }}
             label {{ display: block; font-weight: 750; margin-bottom: 8px; }}
-            textarea {{
+            textarea, input, select {{
                 width: 100%;
                 min-height: 180px;
                 padding: 14px;
@@ -147,6 +160,8 @@ def page_shell(title: str, body: str) -> str:
                 </div>
                 <div class="nav">
                     <a class="button secondary" href="/">Ask</a>
+                    <a class="button secondary" href="/record">Record</a>
+                    <a class="button secondary" href="/setup">Setup</a>
                     <a class="button secondary" href="/history">History</a>
                 </div>
             </div>
@@ -289,3 +304,306 @@ def history_detail(filename: str):
     </section>
     """
     return page_shell("Report Detail", body)
+
+@app.get("/setup", response_class=HTMLResponse)
+def setup_page():
+    fields = list_fields(active_only=True)
+    crop_years = list_crop_years()
+
+    field_options = "".join(
+        f"<option value='{field.id}'>{escape(field.field_name)}</option>"
+        for field in fields
+    )
+
+    field_rows = "".join(
+        f"""
+        <div class="history-item">
+            <strong>{escape(field.field_name)}</strong>
+            <div class="file">
+                Acres: {field.acres if field.acres is not None else "Unknown"}
+                {f" | Farm: {escape(field.farm_name)}" if field.farm_name else ""}
+            </div>
+        </div>
+        """
+        for field in fields
+    ) or '<p class="empty">No fields entered yet.</p>'
+
+    crop_rows = "".join(
+        f"""
+        <div class="history-item">
+            <strong>{escape(cy.field.field_name if cy.field else "Unknown field")}</strong>
+            <div class="file">
+                {cy.crop_year} {escape(cy.crop)}
+                {f" | Variety/Hybrid: {escape(cy.variety_or_hybrid)}" if cy.variety_or_hybrid else ""}
+            </div>
+        </div>
+        """
+        for cy in crop_years
+    ) or '<p class="empty">No crop years entered yet.</p>'
+
+    body = f"""
+    <div class="grid">
+        <section class="card">
+            <h2>Add Field</h2>
+            <form action="/setup/fields" method="post">
+                <label>Field name</label>
+                <input name="field_name" required>
+
+                <label>Farm name</label>
+                <input name="farm_name">
+
+                <label>Acres</label>
+                <input name="acres" type="number" step="0.01">
+
+                <label>County</label>
+                <input name="county">
+
+                <label>State</label>
+                <input name="state" value="NE">
+
+                <label>Notes</label>
+                <textarea name="notes"></textarea>
+
+                <div class="actions">
+                    <button type="submit">Save Field</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="card">
+            <h2>Add Crop Year</h2>
+            <form action="/setup/crop-years" method="post">
+                <label>Field</label>
+                <select name="field_id" required>
+                    <option value="">Select field...</option>
+                    {field_options}
+                </select>
+
+                <label>Crop year</label>
+                <input name="crop_year" type="number" value="{date.today().year}" required>
+
+                <label>Crop</label>
+                <select name="crop" required>
+                    <option value="">Select crop...</option>
+                    <option value="Corn">Corn</option>
+                    <option value="Soybeans">Soybeans</option>
+                    <option value="Wheat">Wheat</option>
+                    <option value="Alfalfa">Alfalfa</option>
+                    <option value="Pasture">Pasture</option>
+                    <option value="Other">Other</option>
+                </select>
+
+                <label>Variety or hybrid</label>
+                <input name="variety_or_hybrid">
+
+                <label>Planned acres</label>
+                <input name="planned_acres" type="number" step="0.01">
+
+                <label>Yield goal</label>
+                <input name="yield_goal" type="number" step="0.01">
+
+                <label>Notes</label>
+                <textarea name="notes"></textarea>
+
+                <div class="actions">
+                    <button type="submit">Save Crop Year</button>
+                </div>
+            </form>
+        </section>
+    </div>
+
+    <br>
+
+    <div class="grid">
+        <section class="card">
+            <h2>Fields</h2>
+            <div class="history-list">{field_rows}</div>
+        </section>
+
+        <section class="card">
+            <h2>Crop Years</h2>
+            <div class="history-list">{crop_rows}</div>
+        </section>
+    </div>
+    """
+    return page_shell("Setup", body)
+
+
+@app.post("/setup/fields")
+def setup_add_field(
+    field_name: str = Form(...),
+    farm_name: str = Form(""),
+    acres: str = Form(""),
+    county: str = Form(""),
+    state: str = Form(""),
+    notes: str = Form(""),
+):
+    create_field(
+        field_name=field_name,
+        farm_name=farm_name,
+        acres=acres,
+        county=county,
+        state=state,
+        notes=notes,
+    )
+    return RedirectResponse("/setup", status_code=303)
+
+
+@app.post("/setup/crop-years")
+def setup_add_crop_year(
+    field_id: str = Form(...),
+    crop_year: str = Form(...),
+    crop: str = Form(...),
+    variety_or_hybrid: str = Form(""),
+    planned_acres: str = Form(""),
+    yield_goal: str = Form(""),
+    notes: str = Form(""),
+):
+    create_crop_year(
+        field_id=field_id,
+        crop_year=crop_year,
+        crop=crop,
+        variety_or_hybrid=variety_or_hybrid,
+        planned_acres=planned_acres,
+        yield_goal=yield_goal,
+        notes=notes,
+    )
+    return RedirectResponse("/setup", status_code=303)
+
+
+@app.get("/record", response_class=HTMLResponse)
+def record_form():
+    current_year = date.today().year
+    crop_years = list_crop_years(year=current_year)
+
+    crop_year_options = "".join(
+        f"""
+        <option value="{cy.id}">
+            {escape(cy.field.field_name if cy.field else "Unknown field")} — {cy.crop_year} {escape(cy.crop)}
+        </option>
+        """
+        for cy in crop_years
+    )
+
+    if not crop_year_options:
+        crop_year_options = '<option value="">No current crop years found. Add them in Setup first.</option>'
+
+    operation_options = "".join(
+        f'<option value="{op}">{op.title()}</option>'
+        for op in [
+            "scouting",
+            "planting",
+            "spraying",
+            "fertilizer",
+            "tillage",
+            "irrigation",
+            "harvest",
+            "hauling",
+            "repair",
+            "other",
+        ]
+    )
+
+    body = f"""
+    <section class="card">
+        <h2>Record a field trip</h2>
+        <p class="hint">
+            Select the known information first. The AI will then look in your note for:
+            operator, equipment, acres covered, products or inputs used, rates,
+            total quantities, costs, weather, field conditions, and extra notes.
+        </p>
+
+        <form action="/record/parse" method="post" onsubmit="this.classList.add('submitting')">
+            <label>Field / Crop</label>
+            <select name="crop_year_id" required>
+                <option value="">Select field and crop...</option>
+                {crop_year_options}
+            </select>
+
+            <label>Operation date</label>
+            <input name="operation_date" type="date" value="{date.today().isoformat()}" required>
+
+            <label>Operation type</label>
+            <select name="operation_type" required>
+                {operation_options}
+            </select>
+
+            <label for="source_text">Field trip note</label>
+            <textarea id="source_text" name="source_text" required placeholder="Example: Dad ran the sprayer. 76 acres. Liberty 32 oz/ac, Enlist 32 oz/ac, AMS 3 lb/ac, 15 GPA. Dry field, 82 degrees, light wind."></textarea>
+
+            <div class="actions">
+                <button type="submit">Create Draft Entry</button>
+                <span class="loading">Parsing record...</span>
+            </div>
+        </form>
+    </section>
+    """
+    return page_shell("Record Field Trip", body)
+
+
+@app.post("/record/parse", response_class=HTMLResponse)
+def record_parse(
+    crop_year_id: str = Form(...),
+    operation_date: str = Form(...),
+    operation_type: str = Form(...),
+    source_text: str = Form(...),
+):
+    cy = get_crop_year(int(crop_year_id))
+
+    context = {
+        "operation_date": operation_date,
+        "operation_type": operation_type,
+        "crop_year_id": cy.id if cy else None,
+        "field_id": cy.field.id if cy and cy.field else None,
+        "field_name": cy.field.field_name if cy and cy.field else None,
+        "crop_year": cy.crop_year if cy else None,
+        "crop": cy.crop if cy else None,
+    }
+
+    draft = parse_field_record(source_text.strip(), context=context)
+    draft_json = json.dumps(draft, indent=2)
+
+    warnings = draft.get("warnings") or []
+    warning_html = ""
+    if warnings:
+        warning_items = "".join(f"<li>{escape(str(w))}</li>" for w in warnings)
+        warning_html = f"<div class='history-item'><strong>Review warnings:</strong><ul>{warning_items}</ul></div>"
+
+    body = f"""
+    <section class="card">
+        <h2>Review draft field record</h2>
+        <p class="hint">Review carefully. Nothing is saved until you approve.</p>
+        {warning_html}
+
+        <pre>{escape(draft_json)}</pre>
+
+        <form action="/record/save" method="post">
+            <textarea name="draft_json" style="display:none">{escape(draft_json)}</textarea>
+            <div class="actions">
+                <button type="submit">Approve and Save</button>
+                <a class="button secondary" href="/record">Discard</a>
+            </div>
+        </form>
+    </section>
+    """
+    return page_shell("Review Field Record", body)
+
+
+@app.post("/record/save", response_class=HTMLResponse)
+def record_save(draft_json: str = Form(...)):
+    draft = json.loads(draft_json)
+    operation = save_approved_field_record(draft)
+
+    body = f"""
+    <section class="card">
+        <h2>Field record saved</h2>
+        <p>Saved operation ID: <strong>{operation.id}</strong></p>
+        <p>Operation type: <strong>{escape(operation.operation_type)}</strong></p>
+        <div class="actions">
+            <a class="button" href="/record">Record another field trip</a>
+            <a class="button secondary" href="/setup">Setup fields/crops</a>
+            <a class="button secondary" href="/">Back to council</a>
+        </div>
+    </section>
+    """
+    return page_shell("Field Record Saved", body)
