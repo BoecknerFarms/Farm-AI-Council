@@ -9,11 +9,44 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
 from app.database import Base
 
+class Entity(Base):
+    __tablename__ = "entities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    entity_name = Column(String, unique=True, nullable=False)
+    entity_type = Column(String, nullable=True)  # individual, LLC, partnership, trust, landlord, tenant, other
+    notes = Column(Text, nullable=True)
+    active = Column(Boolean, default=True)
+
+    field_ownerships = relationship("FieldOwnership", back_populates="entity")
+
+
+class FieldOwnership(Base):
+    __tablename__ = "field_ownerships"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    field_id = Column(Integer, ForeignKey("fields.id"), nullable=False)
+    entity_id = Column(Integer, ForeignKey("entities.id"), nullable=False)
+
+    ownership_percent = Column(Float, nullable=False)
+    ownership_type = Column(String, nullable=True)  # owned, rented, crop_share, custom, other
+    effective_start_year = Column(Integer, nullable=True)
+    effective_end_year = Column(Integer, nullable=True)
+    notes = Column(Text, nullable=True)
+
+    field = relationship("Field", back_populates="ownerships")
+    entity = relationship("Entity", back_populates="field_ownerships")
+
+    __table_args__ = (
+        UniqueConstraint("field_id", "entity_id", "effective_start_year", name="uq_field_entity_year"),
+    )
 
 class Field(Base):
     __tablename__ = "fields"
@@ -35,7 +68,7 @@ class Field(Base):
 
     crop_years = relationship("CropYear", back_populates="field")
     operations = relationship("FieldOperation", back_populates="field")
-
+    ownerships = relationship("FieldOwnership", back_populates="field")
 
 class CropYear(Base):
     __tablename__ = "crop_years"
